@@ -1,0 +1,297 @@
+---
+title: "VIRUS GAME"
+author: "Carlina, Ernesto y Perla"
+date: "2023-01-10"
+output: rmdformats::readthedown
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# PREDICCION DE LAS PROBABILIDADES DE GANAR "VIRUS"
+
+**Autores:**
+
+Alvarez Marquez Carolina
+
+Moreno Juarez Ernesto
+
+Rodriguez Guerrero Perla GuadalupeB
+
+## **Descripcion general del problema que quieren abordar**
+
+"Virus" es un juego de cartas lanzado en 2019 que tiene como objetivo aislar un cuerpo sano para evitar la propagacion de enfermedades. Esto compuesto por 68 cartas y puede ser jugado por 2 a 6 personas. Las cartas se dividen en organos, virus, medicinas y tratamientos. En la categoria de organos se pueden encontrar cartas de corazon, cerebro, estomago y hueso, estas cuatro cartas conforman un cuerpo, para ganar el juego los organos no deben estar infectados por virus. Cada organo puede ser infectado solamente con virus especificos, por ejemplo, el corazon solo puede ser infectado por virus rojos, el cerebro por virus azules, el estomago por verdes y los huesos por amarillos.B
+
+En la primera ronda se le dan a cada jugador tres cartas al azar, las cartas restantes se colocan en el centro y por turnos cada jugador puede tomar una carta nueva del mazo y descartar alguna de las que posea, o atacar y defenderse con las cartas que posee. Las cartas son visibles para los otros jugadores por lo que es posible atacar enviando virus a los otros jugadores o usando cartas especiales de tratamiento para robar sus organos. En este juego una defensa exitosa consiste en usar las cartas de medicina para vacunar o inmunizar a los organos que posees, una vez inmunizado ningun jugador puede contagiarse con virus.
+
+Gana el primer jugador que tenga cuatro organos sanos, es decir libres de virus, sin importar si estan vacunados o inmunizados.
+
+El objetivo de este proyecto es tratar de modelar la dinamica de infeccion, recuperacion y muerte de los organos del juego "Virus". Asi mismo se pretende predecir que jugador completara primero el juego usando automatas celulares.
+
+## **Modelos matematicos con los que abordaron el problema**
+
+Automatas celulares
+
+Se pretende establecer las condiciones para que las celdas representen tres posibles estados de transicion. El primero corresponde a un estado sano del organo, el segundo a un estado enfermo o que indica la presencia de un virus, y el tercero a un estado de muerte o presencia de dos virus. Las transiciones de estado dependen de la probabilidad de ser atacado o de la habilidad de defensa, y se pretende saber en cuantas transiciones o turnos un jugador puede completar un cuerpo sano.
+
+## Modelo por compartimentos
+
+Se realizara un modelo por compartimentos que explique la dinamica de infeccion y recuperacion de los organos, el modelo no contempla tasas de interaccion debido a que los organos no ejercen una presion selectiva sobre los otros, pero si es necesaria la presencia de los cuatro para ganar. El esquema basico en el que se basa el modelo por compartimentos es un modelo SIRS.
+
+![](images/pf_genomica.jpeg)
+
+El modelo propuesto por compartimentos queda de la siguiente manera. Como se observa, se planea que solamente se implemente para organos y no se contemplen interacciones. Es por eso que dado las cartas del juego, se planea que se modele los cuatro organos. Colocamos estas tasas porque aun falta ajustar bien el modelo por compartimentos.
+
+Las tasas de cambio de un estado a otro para los organos estan dadas de la siguiente manera.
+
+**alpha** = Transicion de susceptible a infectado cuando se cuando se coloca un virus de acuerdo a al organo correspondiente.
+
+\
+**beta** = Transicion de infectado a recuperado. Para pasar de I a R se necesita que el organo infectado con una carta de virus, reciba una carta de tratamiento, de esta manera se puede recuperar.
+
+**gamma** = Un recuperado va a transicionar a susceptible cuando ya no se cuente con ninguna carta de tratamiento o proteccion.
+
+Como el juego contempla otros posibles estados. Proponemos tomar como molde el modelo SIRS para perfeccionarlo y agregarle mas compartimentos que nos permitan modelar de mejor manera el juego. Se planea trabajar con el siguiente modelo. Con los siguientes estados.
+
+\
+**Variables:**
+
+***S**= susceptible*
+
+***I** = Infectado*
+
+***E** = Extirpado (el organo se destruye debido a que se colocaron 2 cartas de virus).*
+
+***C** = Inmunizado (en el juego se hace mencion que esto corresponde a cuando se coloca una segunda medicina sobre un organo, este va a quedar inmunizado o protegido para siempre).*
+
+***V** = vacunado (solo se coloca una medicina sobre el organo).*
+
+***R** = recuperado.*
+
+\
+![](images/cronico.png)
+
+**Parametros:**
+
+**alpha** - probabilidad de que tu oponente tenga en sus cartas o pueda sacar del mazo un virus con el que pueda atacar al C3rgano.B
+
+**beta**- probabilidad de que tu oponente tenga en sus cartas o pueda sacar del mazo un virus con el que pueda atacar al C3rgano por segunda vez por lo que ya no es viable y se descarta.B
+
+**gamma**- probabilidad de que el jugador use u obtenga una carta de medicina para curar a un C3rgano infectado con un virus.B
+
+**mu**\<- probabilidad de que el jugador obtenga una carta de medicina para vacunar al C3rgano.B
+
+**v**- probabilidad de que el jugador obtenga una carta de medicina para vacunar al C3rgano por segunda vez, este C3rgano ya no puede ser atacado por virus.B
+
+## **Codigo y ecuaciones**
+
+#### CALCULO DE PROBABILIDADES
+
+**Cartas** : Objetos que contienen cada carta, se clasificaron primero de acuerdo al tipo de carta.
+
+```{r}
+organos <- rep(c("corazon", "cerebro","huesos","estomago"), times = c(5,5,5,5))
+virus <- rep(c("rojo", "azul","amarillo","verde"), times = c(4,4,4,4))
+medicina <- rep(c("inyeccion", "pildora","bandita","jarabe"), times = c(4,4,4,4))
+tratamientos <- rep(c("contagio", "ladron","transplante","guante","error"), times = c(2,3,3,1,1))
+
+```
+
+Objeto que contiene las 68 cartas
+
+```{r}
+maso <- c(organos, virus, medicina, tratamientos)
+```
+
+#### Condiciones iniciales
+
+Sample para obtener las primeras 3 cartas que va a tener el jugador
+
+```{r}
+player1 <- as.matrix(sample(maso,3, replace = FALSE))
+
+carta1 <- player1[1,1]
+carta2 <- player1[2,1]
+carta3 <- player1[3,1]
+```
+
+#### CC!lculo de probabilidades a partir de las condiciones iniciales
+
+**carta1** : Fue seleccionada aleatoriamente por un sample. Esta funcion calcula la probabilidad de que tu proxima carta sea corazon. En total hay 5 cartas de corazon en todo el maso; ya se repartieron 6 al inicio, por lo que el maso ahora solo tiene 62.
+
+Si tu carta ya es corazon la probabilidad de sacar otra igual disminuye. Si tu carta no es corazon tu probabilidad sigue siendo la misma. Se debe calcular para cada carta del maso, contemplando las tres cartas que tienes.
+
+```{r}
+prob1 <- function(){
+if(carta1 == "corazon"){
+  prob_corazon <- 4/62
+  prob_corazon <- as.numeric(prob_corazon)
+}else{
+  prob_corazon <- 5/62
+  prob_corazon <- as.numeric(prob_corazon)
+} 
+  return (print(paste(prob_corazon)))
+}
+
+prob1()
+
+prob2 <- function(){
+  if(carta2 == "corazon"){
+    prob_corazon <- 4/62
+    prob_corazon <- as.numeric(prob_corazon)
+  }else{
+    prob_corazon <- 5/62
+    prob_corazon <- as.numeric(prob_corazon)
+  } 
+  return (print(paste(prob_corazon)))
+}
+
+prob2()
+
+prob3 <- function(){
+  if(carta3 == "corazon"){
+    prob_corazon <- 4/62
+    prob_corazon <- as.numeric(prob_corazon)
+  }else{
+    prob_corazon <- 5/62
+    prob_corazon <- as.numeric(prob_corazon)
+  } 
+  return (print(paste(prob_corazon)))
+}
+
+prob3()
+
+```
+
+#### DISECO DEL MODELO POR COMPARTIMENTOS
+
+La sobrevivencia de cada organo se ve influenciada por factores externos:
+
+-   Los que benefician a su sobrevivencia.
+
+-   Tener en su poder cartas de tratamiento.
+
+-   Que el organo se encuentre vacunado o inmunizado.
+
+**Factores que pueden contribuir a la muerte del C3rgano.**
+
+-   Infeccion por un virus
+
+-   Muerte por dos virus
+
+Se puede decir que los organos no interactuan entre si, pero es necesario tener cuatro organos sanos diferentes para ganar. Por lo tanto el modelo no contempla tasas de interaccion entre organos.
+
+```{r}
+library("deSolve")
+corazon <- function(tiempo, condiciones_iniciales, pars) {
+  with(as.list(c(state, parameters)), { 
+    dC <- -beta*C + gama*C
+    list(c(dC))
+  })
+}
+
+```
+
+Los parametros estan dados por las probabilidades de aparicion de las cartas.
+
+**beta**- virus que pueden atacar a tu carta y estan disponibles en el maso
+
+**gama**- medicina que puede curar o vacunar a tu virus y que tu posees
+
+```{r}
+pars <- c(beta = 4, gama = 2 )  
+condiciones_iniciales <- c(S = 1)
+tiempo <- seq(0, 20, by = 0.001)
+
+```
+
+#### PREDICCIONES USANDO AUTOMATAS CELULARES
+
+Basado en el codigo del juego de la vida.
+
+```{r}
+rm(list=ls())
+q=0.5 # Probability for recovery
+n=4 # Size of matrix 50 x 50
+mat=matrix(ncol=n,nrow=n,0) # Create matrix with zeros (Healthy individuals)
+
+mat[1,1]=1 # Place an infected individual at pos (25,15)
+image(mat,col=c("grey50","deeppink","seagreen1"),yaxt="n",xaxt="n",zlim=c(0,2)) # Plot image
+grid(nx=n,ny=n,col="grey70",lty=1)
+
+temp=mat
+t=3 # Number of time steps
+n_helalthy=rep(0,t) # Vector to count healthy at each time step
+n_infected=rep(0,t) # Vector to count infected at each time step
+n_resistant=rep(0,t) # Vector to count resistant at each time step
+
+for (k in 1:t){ # Repeat t times
+  kH=0 # Initialize counter for healthy
+  kI=0 # Initialize counter for infected
+  kR=0 # Initialize counter for resistant
+  # Step through each element in the matrix
+  for (i in 1:n){
+    for (j in 1:n){
+      if (mat[i,j]==0) { kH=kH+1} # Count healthy
+      if (mat[i,j]==1) { kI=kI+1} # Count infected
+      if (mat[i,j]==2) { kR=kR+1} # Count resistant
+      R=0 # Initialize counter for number of infected neighbors
+      
+      if (mat[i,j]==0){ # If healthy individual
+        E=i+1
+        W=i-1
+        N=j-1
+        S=j+1
+        # Check if outside the matrix
+        if (E==n+1) { E=1}
+        if (W==0) { W=n}
+        if (N==0) { N=n}
+        if (S==n+1) { S=1}
+        # Count number of infected neighbors
+        if(mat[E,j]==1){R=R+1} # East
+        if(mat[W,j]==1){R=R+1} # West
+        if(mat[i,N]==1){R=R+1} # North
+        if(mat[i,S]==1){R=R+1} # South
+        if(mat[E,N]==1){R=R+1} # North East
+        if(mat[E,S]==1){R=R+1} # South East
+        if(mat[W,N]==1){R=R+1} # North West
+        if(mat[W,S]==1){R=R+1} # South West
+      }
+      a=-1.5
+      b=0.6
+      Pinfect=(1/(1+exp(-(a+b*R)))) # Calc probability for healthy to become infected
+      g=runif(1) # Draw a random number between 0 and 1
+      if (g<Pinfect & mat[i,j]==0 & R>0){
+        temp[i,j]=1 # Healthy becomes infected
+      }
+      if (mat[i,j]==1){ # If infected individual
+        g=runif(1) # Draw a random number between 0 and 1
+        if (g<q){
+          temp[i,j]=2 # Infected becomes Resistant
+        }
+      }
+    }
+  }
+  
+  image(mat,col=c("grey50","deeppink","seagreen1"),add=TRUE,zlim=c(0,2)) # Plot image
+  grid(nx=n,ny=n,col="grey70",lty=1)
+  Sys.sleep(0.1) # To see movement on screen we need to pause the loop
+  mat=temp # Overwrite matrix
+  # Save number of healthy, infected and resistant at each time step
+  n_helalthy[k]=kH
+  n_infected[k]=kI
+  n_resistant[k]=kR
+}
+
+graphics.off()
+plot(1:k,n_helalthy,type="l",ylab="Number",xlab="Time steps (weeks)",col=1,ylim=c(0,2600))
+lines(1:k,n_infected,col=2)
+lines(1:k,n_resistant,col=3)
+legend(x=52,y=1599,c("Susceptible","Infected","Recovered"),lty=1,col=1:3)
+
+```
+
+**Contribucion individual.**
+
+El presente trabajo fue elaborado de manera equitativa por las personas mencionadas al inicio del documento como autores del mismo.B
